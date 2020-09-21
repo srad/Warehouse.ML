@@ -199,6 +199,7 @@ def call_match(img, threshold=0.9):
 def activate(im, r=1):
     h, w = im.shape[:2]
     activated = np.zeros((h, w, 1), dtype="uint8")
+    org = np.copy(im)
 
     # Leave frame for radius
     for y in range(r, w - r):
@@ -212,9 +213,9 @@ def activate(im, r=1):
             # |  5  |  6  | 7  |
             # +-----+-----+----+
             # Leads to generally lower results and more details
-            mean = im[(x - r):(x + r), (y - r):(y + r)].mean()
-            if mean > 0:
-                # if np.any(im[(x - r):(x + r), (y - r):(y + r)]):
-                activated = cv.rectangle(activated, (y - r, x - r), (y + r, x + r), 255)
+            # mean = im[(x - r):(x + r), (y - r):(y + r)].mean()
+            # if mean > 0:
+            if np.any(im[(x - r):(x + r), (y - r):(y + r)]):
+                activated = cv.rectangle(activated, (y - r, x - r), (y + r, x + r), 255 / 2)
 
     return activated

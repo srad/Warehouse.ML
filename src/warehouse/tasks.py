@@ -12,6 +12,7 @@ from mpl_toolkits.mplot3d import axes3d
 from datetime import datetime
 from multiprocessing.dummy import Pool as ThreadPool
 from multiprocessing import current_process
+from threading import Thread
 
 
 intermediate_steps = True
@@ -95,22 +96,17 @@ def show(im):
 
 
 # This script generates the bounding boxes from the annotation color
-def box(json_path, cam=None):
-    if not path.exists(json_path):
-        print(f'JSON file with index not found, first create with: python main.py index <input-dir>')
-        exit(0)
-
+def box(vals):
+    in_dir, data, capture_cam = vals
     print("\nCreating bounding boxes from masks")
-    print("cam:", cam)
+    print("cam:", capture_cam)
 
-    data = read_json(json_path)
-    in_dir = path.dirname(json_path)
     length = len(data.keys())
 
     path_segments, path_masks, path_bounds, path_boxes = folders(in_dir)
 
     for i, uuid in enumerate(data):
-        cams = list(data[uuid]['cams'].keys()) if cam == None else [cam]
+        cams = list(data[uuid]['cams'].keys()) if capture_cam is None else [capture_cam]
 
         for cam in cams:
             original = path.join(in_dir, data[uuid]['cams'][cam]['original'])
@@ -268,6 +264,7 @@ def feature_template(in_dir):
 
     # Convert back to grayscale: [0..1] => [0..255]
     p = p / l
+    print("Max: ", np.max(p))
     np.save(path.join(path_results, "p_xy.npy"), p)
     plot(p, path_results)
 
@@ -293,20 +290,20 @@ def plot_3d(data):
     y = np.arange(0, h, 1)
     X, Y = np.meshgrid(x, y)
 
-    fig = plt.figure(figsize=(w / 5, h / 10))
+    # fig = plt.figure(figsize=(w / 5, h / 10))
     fig = plt.gcf()
-    fig.set_size_inches(w / 10, h / 10)
+    # fig.set_size_inches(w / 10, h / 10)
     ax = fig.add_subplot(111, projection='3d')
 
     map = plt.get_cmap('gist_heat')
     # Plot a 3D surface
-    surf = ax.plot_surface(X, Y, data, cmap=map, rstride=2, cstride=4, linewidth=0)
+    surf = ax.plot_surface(X, Y, np.flip(data, axis=0), cmap=map, rstride=10, cstride=10)
     # 2d projection of 3d surface with colors
     # cset = ax.contourf(X, Y, data, zdir='z', offset=0, cmap=plt.get_cmap('gist_heat'))
-    # fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5)
+    fig.colorbar(surf, ax=ax)
     ax.set_xlim3d(0, w)
     ax.set_ylim3d(0, h)
-    ax.set_zlim3d(0, 4)
+    ax.set_zlim3d(0, 1.0)
     plt.show()
 
 
@@ -324,12 +321,18 @@ def extract_features(in_dir):
     size = len(files)
     for index, f in enumerate(files):
         file = path.join(path_segments, f)
-        i = pipe(file, steps=[pool, cluster, edge, rgb, corner])
+        image = cv.imread(file)
         w, h = TEMPLATE_WITH, TEMPLATE_HEIGHT
-        i = cv.resize(i, (w, h))
+        i = cv.resize(image, (w, h))
+        # i = pipe(file, steps=[pool, cluster, edge, rgb, corner])
+        i = cv.Canny(i, 100, 255, apertureSize=3)
+        kernel = np.ones((6, 6), np.uint8)
+        i = cv.dilate(i, kernel, iterations=2)
         cv.imwrite(path.join(path_features, f'{index}.png'), i)
-        cv.imwrite(path.join(path_activated, f'{index}.png'), activate(i))
+        # i = cv.GaussianBlur(i, (5, 5), 0)
+        cv.imwrite(path.join(path_activated, f'{index}.png'), i)  # activate(i))
         print(f'Feature extraction: {index}/{size}', end='\r')
+
 
 def likelihood(p_xy, a_xy):
     h, w = a_xy.shape[:2]
@@ -353,6 +356,20 @@ def stamp():
     return datetime.now().strftime("%Y_%b_%d__%H_%M_%S")
 
 
+def split_dict(d, n):
+    dicts = []
+    l = len(d) // n
+    current = {}
+    for i, key in enumerate(d):
+        if i % l == 0:
+            dicts.append(current)
+            current = {}
+        else:
+            current[key] = d[key]
+
+    return dicts
+
+
 def load_pxy_compute_likelihood(a_xy, in_dir):
     # Make sure a_xy and p_xy have the same dimensions!
     p_xy = np.load(path.join(in_dir, f'p_xy_{stamp()}.npy'))
@@ -362,9 +379,29 @@ def load_pxy_compute_likelihood(a_xy, in_dir):
     print(likelihood(p_xy, a_xy))
 
 
+def get_json(json_path):
+    if not path.exists(json_path):
+        print(f'JSON file with index not found, first create with: python main.py index <input-dir>')
+        exit(0)
+
+    data = read_json(json_path)
+    p = path.dirname(json_path)
+
+    return data, p
+
+
+def box_threaded(json_path, cam=None):
+    data, p = get_json(json_path)
+
+    n = 4
+    chunks = split_dict(data, n)
+    tpool = ThreadPool(n)
+    tpool.map(box, [(p, chunks[i], cam) for i in range(n)])
+
+
 def full(in_dir, **kwargs):
     index(in_dir)
-    box(path.join(in_dir, "data.json"), **kwargs)
+    box_threaded(path.join(in_dir, "data.json"), **kwargs)
     extract_features(in_dir)
     feature_template(in_dir)
 

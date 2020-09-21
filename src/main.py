@@ -32,7 +32,7 @@ if __name__ == "__main__":
         cam = None
         if argc > 2:
             cam = args[2]
-        tasks.box(json_dir, cam)
+        tasks.box_threaded(json_dir, cam)
     elif task == "extract" and argc == 2:
         in_dir = args[1]
         tasks.extract_features(in_dir)
