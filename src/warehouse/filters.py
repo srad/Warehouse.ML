@@ -178,28 +178,10 @@ def contours(imgs):
     return img
 
 
-def match(img_rgb, threshold=0.5, *templates):
-    img_gray = cv.cvtColor(img_rgb, cv.COLOR_BGR2GRAY)
-    for t in templates:
-        template = cv.imread(t, 0)
-        height, width = template.shape[::]
-        res = cv.matchTemplate(img_gray, template, cv.TM_CCOEFF_NORMED)
-        loc = np.where(res >= threshold)
-        for pt in zip(*loc[::-1]):
-            cv.rectangle(img_rgb, pt, (pt[0] + width, pt[1] + height), (0, 255, 0), 2)
-
-    return img_rgb
-
-
-def call_match(img, threshold=0.9):
-    return match(img, threshold, "template2.png")
-    # return match(img, threshold, "template_corner_left_top.png", "template_corner_right_top.png", "template_corner_right_bottom.png", "template_corner_left_bottom.png")
-
-
 def activate(im, r=1):
     h, w = im.shape[:2]
     activated = np.zeros((h, w, 1), dtype="uint8")
-    org = np.copy(im)
+    #org = np.copy(im)
 
     # Leave frame for radius
     for y in range(r, w - r):
@@ -216,7 +198,7 @@ def activate(im, r=1):
             # mean = im[(x - r):(x + r), (y - r):(y + r)].mean()
             # if mean > 0:
             if np.any(im[(x - r):(x + r), (y - r):(y + r)]):
-                activated = cv.rectangle(activated, (y - r, x - r), (y + r, x + r), 255 / 2)
+                activated = cv.rectangle(activated, (y - r, x - r), (y + r, x + r), 255)
 
     return activated
 

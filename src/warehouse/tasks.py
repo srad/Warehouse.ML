@@ -1,7 +1,7 @@
 import glob
 from os import path, mkdir, remove, listdir
 import json
-from .filters import laplacian, contours, corner, corner2, cluster, denoise, edge, rgb, to_grey, pool, activate, harris, canny
+from .filters import activate, canny, harris
 import cv2 as cv
 import numpy as np
 from os import listdir
@@ -10,9 +10,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 from datetime import datetime
-from multiprocessing.dummy import Pool as ThreadPool
-from multiprocessing import current_process
-from threading import Thread
 
 
 intermediate_steps = True
@@ -28,12 +25,10 @@ def read_json(file):
 
 def index(in_dir, outfile="data.json"):
     data = {}
-    p = path.join(in_dir, "*.jpg")
     print("\nCreating file index data.json")
-    print(f'Reading: {p}')
+    print(f'Reading: {in_dir}')
 
-    for file in glob.glob(p):
-        name = file.split("\\")[1]
+    for name in get_files(in_dir):
         parts = name.split(".jpg")[0].split("_")
 
         if not parts[0] in data:
@@ -95,10 +90,55 @@ def show(im):
     cv.waitKey(0)
 
 
+def get_template(template_path):
+    return [cv.imread(path.join(template_path, f), 0) for f in get_files(template_path)]
+
+
+def match_templates_load(file, threshold, template_path):
+    """
+    Loads the image, converts to grayscale and the call match_templates.
+    """
+    in_img = cv.imread(file)
+    if in_img is None:
+        print(f'File not found: {file}')
+        exit(0)
+    
+    img_gray = cv.cvtColor(in_img, cv.COLOR_BGR2GRAY)
+
+    match_templates(img_gray, threshold, get_template(template_path), in_img)
+
+
+def match_templates(grey_img, threshold, templates, in_img=None):
+    """
+    Expects that the passed in image is already a grayscale loaded img.
+    """
+    h, w = grey_img.shape
+    out_img = np.zeros((h, w, 1), dtype="uint8")
+
+    for template in templates:
+        height, width = template.shape
+        res = cv.matchTemplate(grey_img, template, cv.TM_CCOEFF_NORMED)
+        loc = np.where(res >= threshold)
+        
+        for pt in zip(*loc[::-1]):
+            if in_img is not None:
+                cv.rectangle(in_img, pt, (pt[0] + width, pt[1] + height), (0, 255, 0), 2)
+            cv.rectangle(out_img, pt, (pt[0] + width, pt[1] + height), 255, cv.FILLED)
+
+    if in_img is not None:
+        cv.imwrite("matching_marks.png", in_img)
+        cv.imshow("Template Matches", in_img)
+        cv.waitKey(0)
+        cv.imwrite("matching_locations.png", out_img)
+        cv.imshow("Match BW", out_img)
+        cv.waitKey(0)
+
+    return out_img
+
+
 # This script generates the bounding boxes from the annotation color
-def box(vals):
-    in_dir, data, capture_cam = vals
-    print("\nCreating bounding boxes from masks")
+def box(in_dir, data, capture_cam):
+    print("\nCreating masks and bounding boxes")
     print("cam:", capture_cam)
 
     length = len(data.keys())
@@ -176,6 +216,42 @@ def box(vals):
         print(f'{i}/{length}', end='\r')
 
 
+def extract_feature_load(file, template_path):
+    im = cv.imread(file)
+
+    i_edge, i_corner = features(np.copy(im))
+    i_match = match_templates(i_edge, 0.85, get_template(template_path), np.copy(im))
+    i_shadow = find_shadows(np.copy(im))
+
+    cv.imshow("Edges", i_edge)
+    cv.waitKey(0)
+    cv.imshow("Corners", i_corner)
+    cv.waitKey(0)
+
+
+def find_shadows(im):
+    #im = cv.imread(file)
+    gray = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
+
+    im_h, im_w = gray.shape
+    out_im = np.zeros((im_h, im_w, 1), dtype="uint8")
+
+    _, thresh = cv.threshold(gray, 50, 255, 0)
+    contours, _ = cv.findContours(thresh, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+
+    for cnt in contours:
+        area = cv.contourArea(cnt)
+        x, y, w, h = cv.boundingRect(cnt)
+        if w < im_w and area > 100 and w > h and ((h / w) < 0.4):
+            cv.rectangle(out_im, (x,y), (x+w,y+h), 255, cv.FILLED)
+            #cv.rectangle(im, (x,y), (x+w,y+h), (0, 255, 0), 2)
+
+    #cv.imshow("Shadows", im)
+    #cv.waitKey(0)
+
+    return out_im
+
+
 def pipe(filename, steps, args=[]):
     img = cv.imread(filename)
     x = cv.imread(filename)
@@ -186,46 +262,8 @@ def pipe(filename, steps, args=[]):
     return x
 
 
-def dist_transform(filename):
-    img = cv.imread(filename)
-    gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    ret, thresh = cv.threshold(gray, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU)
-    # noise removal
-    kernel = np.ones((3, 3), np.uint8)
-    opening = cv.morphologyEx(thresh, cv.MORPH_OPEN, kernel, iterations=2)
-    # sure background area
-    sure_bg = cv.dilate(opening, kernel, iterations=3)
-    # Finding sure foreground area
-    return cv.distanceTransform(opening, cv.DIST_L2, 3)
-
-
 def get_files(dir):
-    return [f for f in listdir(dir) if isfile(join(dir, f))]
-
-
-# pipeline("image3.png")
-# dist = dist_transform("image2.jpg")
-# save("dist.png", dist)
-# pipeline("image2.jpg")
-# show(match(rgb(dist)))
-# show(edge("image2.jpg"))
-# l0 = laplacian("image2.jpg")
-# show(thres("image2.jpg"))
-# smooth = cv.fastNlMeansDenoisingColored(cv.imread("image2.jpg"), None, 20, 10, 7, 21)
-# cv.imwrite("smooth.png", smooth)
-# pipeline("smooth.png")
-# pipeline2("image4.jpg")
-# pipeline("image5.jpg")
-# pipe("image1.jpg", steps=[pixelate, cluster, edge, rgb, laplacian, to_grey, contours])
-
-def start1():
-    files = get_files()
-    l = len(files)
-    for index, f in enumerate(files):
-        # i = pipe(f'data/{f}', steps=[pool, cluster, to_grey, edge, contours])
-        i = pipe(f'data/{f}', steps=[pool, cluster, edge, rgb, laplacian, to_grey, contours])
-        cv.imwrite(f'pipe/{f}', i)
-        print(f'{index}/{l}', end='\r')
+    return [f for f in listdir(dir) if isfile(join(dir, f)) and (f.endswith(".jpg") or f.endswith(".png"))]
 
 
 def plot(p, save_path=None):
@@ -238,43 +276,42 @@ def plot(p, save_path=None):
     plt.show()
 
 
-def feature_template(in_dir):
-    """Expects that extract_features() had been run and the "features" folder exists.
-    1. Convert grayscale to decimal: [0..255] => [0..1] for probability calculation
-    :param in_dir:
-    :return:
-    """
+def feature_template(in_dir, prefix):
+    print("Creating probability template P_xy")
 
-    print("\nCreating probability template P_xy")
     w, h = TEMPLATE_WITH, TEMPLATE_HEIGHT
-    path_activated = path.join(in_dir, "activated")
+    path_features = path.join(in_dir, "features")
     path_results = path.join(in_dir, "results")
 
     if not path.exists(path_results):
         mkdir(path_results)
 
-    files = get_files(path_activated)
+    files = [f for f in get_files(path_features) if f.startswith(prefix)]
+    if len(files) == 0:
+        print("No files to compute templates for")
+        exit()
+        
     p = np.zeros((h, w), dtype=np.double)
 
     l = len(files)
     for index, f in enumerate(files):
-        file = path.join(in_dir, "activated", f)
+        file = path.join(in_dir, "features", f)
         p += np.array(cv.cvtColor(cv.imread(file), cv.COLOR_BGR2GRAY), dtype=np.double) / 255.0
         print(f'P_xy: {index}/{l}', end='\r')
 
     # Convert back to grayscale: [0..1] => [0..255]
     p = p / l
     print("Max: ", np.max(p))
-    np.save(path.join(path_results, "p_xy.npy"), p)
+    np.save(path.join(path_results, f'p_xy_{prefix}_{stamp()}.npy'), p)
     plot(p, path_results)
 
     # To image
     p = p * 255.0
-    cv.imwrite(path.join(path_results, f'feature_p_x_y_{stamp()}.png'), np.array(p, dtype="uint8"))
+    cv.imwrite(path.join(path_results, f'feature_p_xy_{prefix}_{stamp()}.png'), np.array(p, dtype="uint8"))
 
 
-def load_plot(in_dir):
-    path_results = path.join(in_dir, "results", "p_xy.npy")
+def load_plot(in_dir, name):
+    path_results = path.join(in_dir, "results", name)
 
     if not path.exists(path_results):
         print(f'File not found: {path_results}')
@@ -307,36 +344,59 @@ def plot_3d(data):
     plt.show()
 
 
-def extract_features(in_dir):
+def features(im, edge=True, corner=True):
+    # i = pipe(file, steps=[pool, cluster, edge, rgb, corner])
+    #i = cv.Canny(i, 100, 255, apertureSize=3)
+    i_corner = None
+    i_edge = None
+
+    kernel = np.ones((5, 5), np.uint8)
+
+    if edge:
+        edge = canny(im)
+        i_edge = cv.dilate(edge, kernel, iterations=1)
+
+    if corner:
+        corner = harris(im)
+        i_corner = cv.dilate(corner, kernel, iterations=1)
+
+    return i_edge, i_corner
+
+
+def extract_features(in_dir, template_path):
     """
     Expects segments sub folder ready to go
     :param in_dir:
     :return:
     """
     print("\n\nExtracting features from image segments F_xy")
-    path_features, path_activated = folders_template(in_dir)
+    path_features, _ = folders_template(in_dir)
+    templates = get_template(template_path)
 
     path_segments = path.join(in_dir, "segments")
     files = get_files(path_segments)
+
     size = len(files)
+
     for index, f in enumerate(files):
         file = path.join(path_segments, f)
         image = cv.imread(file)
         w, h = TEMPLATE_WITH, TEMPLATE_HEIGHT
         i = cv.resize(image, (w, h))
-        # i = pipe(file, steps=[pool, cluster, edge, rgb, corner])
-        #i = cv.Canny(i, 100, 255, apertureSize=3)
-        #kernel = np.ones((6, 6), np.uint8)
-        #i = cv.dilate(i, kernel, iterations=2)
-        edge = canny(image)
-        corners = harris(image)
+        i_copy = np.copy(i)
+        i_edge, i_corner = features(i)
+        i_match = match_templates(i_edge, 0.9, templates)
+        i_shadow = find_shadows(i_copy)
 
-        cv.imwrite(path.join(path_features, f'{index}_edge.png'), edge)
-        cv.imwrite(path.join(path_features, f'{index}_corner.png'), corners)
+        cv.imwrite(path.join(path_features, f'edge_{index}.png'), i_edge)
+        cv.imwrite(path.join(path_features, f'corner_{index}.png'), i_corner)
+        cv.imwrite(path.join(path_features, f'match_{index}.png'), i_match)
+        cv.imwrite(path.join(path_features, f'shadow_{index}.png'), i_shadow)
         
         # i = cv.GaussianBlur(i, (5, 5), 0)
-        cv.imwrite(path.join(path_activated, f'{index}_edge.png'), edge)  # activate(i))
-        cv.imwrite(path.join(path_activated, f'{index}_corner.png'), corners)
+        #cv.imwrite(path.join(path_activated, f'edge_{index}.png'), i_edge)  # activate(i))
+        #cv.imwrite(path.join(path_activated, f'corner_{index}.png'), i_corner)
+
         print(f'Feature extraction: {index}/{size}', end='\r')
 
 
@@ -393,32 +453,15 @@ def get_json(json_path):
     data = read_json(json_path)
     p = path.dirname(json_path)
 
-    return data, p
+    return data
 
 
-def box_threaded(json_path, cam=None):
-    data, p = get_json(json_path)
-
-    n = 4
-    chunks = split_dict(data, n)
-    tpool = ThreadPool(n)
-    tpool.map(box, [(p, chunks[i], cam) for i in range(n)])
-
-
-def full(in_dir, **kwargs):
+def pipeline(in_dir, template_path, cam=None):
     index(in_dir)
-    box_threaded(path.join(in_dir, "data.json"), **kwargs)
-    extract_features(in_dir)
-    feature_template(in_dir)
-
-
-def thread(fn, **kwargs):
-    tpool = ThreadPool(4)
-
-    # Open the URLs in their own threads
-    # and return the results
-    results = tpool.map(fn, **kwargs)
-
-    # Close the pool and wait for the work to finish
-    tpool.close()
-    tpool.join()
+    data = get_json(path.join(in_dir, "data.json"))
+    box(in_dir, data, capture_cam=cam)
+    extract_features(in_dir, template_path)
+    feature_template(in_dir, "edge_")
+    feature_template(in_dir, "corner_")
+    feature_template(in_dir, "match_")
+    feature_template(in_dir, "shadow_")

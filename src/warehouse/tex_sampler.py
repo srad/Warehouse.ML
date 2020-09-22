@@ -57,7 +57,6 @@ def mc_sample(file, out_dir, w, h, count=1):
 
     print(w, h)
 
-
     rgb = range(256)
     for i in range(count):
         for y in range(h):
