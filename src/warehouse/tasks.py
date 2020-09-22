@@ -1,7 +1,7 @@
 import glob
 from os import path, mkdir, remove, listdir
 import json
-from .filters import laplacian, contours, corner, corner2, cluster, denoise, edge, rgb, to_grey, pool, activate
+from .filters import laplacian, contours, corner, corner2, cluster, denoise, edge, rgb, to_grey, pool, activate, harris, canny
 import cv2 as cv
 import numpy as np
 from os import listdir
@@ -325,12 +325,18 @@ def extract_features(in_dir):
         w, h = TEMPLATE_WITH, TEMPLATE_HEIGHT
         i = cv.resize(image, (w, h))
         # i = pipe(file, steps=[pool, cluster, edge, rgb, corner])
-        i = cv.Canny(i, 100, 255, apertureSize=3)
-        kernel = np.ones((6, 6), np.uint8)
-        i = cv.dilate(i, kernel, iterations=2)
-        cv.imwrite(path.join(path_features, f'{index}.png'), i)
+        #i = cv.Canny(i, 100, 255, apertureSize=3)
+        #kernel = np.ones((6, 6), np.uint8)
+        #i = cv.dilate(i, kernel, iterations=2)
+        edge = canny(image)
+        corners = harris(image)
+
+        cv.imwrite(path.join(path_features, f'{index}_edge.png'), edge)
+        cv.imwrite(path.join(path_features, f'{index}_corner.png'), corners)
+        
         # i = cv.GaussianBlur(i, (5, 5), 0)
-        cv.imwrite(path.join(path_activated, f'{index}.png'), i)  # activate(i))
+        cv.imwrite(path.join(path_activated, f'{index}_edge.png'), edge)  # activate(i))
+        cv.imwrite(path.join(path_activated, f'{index}_corner.png'), corners)
         print(f'Feature extraction: {index}/{size}', end='\r')
 
 

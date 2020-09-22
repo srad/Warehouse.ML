@@ -219,3 +219,48 @@ def activate(im, r=1):
                 activated = cv.rectangle(activated, (y - r, x - r), (y + r, x + r), 255 / 2)
 
     return activated
+
+
+def hist_color_img(img):
+    """Calculates the histogram from a three-channel image"""
+
+    histr = []
+    histr.append(cv.calcHist([img], [0], None, [256], [0, 256]))
+    histr.append(cv.calcHist([img], [1], None, [256], [0, 256]))
+    histr.append(cv.calcHist([img], [2], None, [256], [0, 256]))
+
+    return histr
+
+
+def harris(img):
+    gray = cv.cvtColor(img,cv.COLOR_BGR2GRAY)
+    gray = np.float32(gray)
+    
+    # To detect only sharp corners
+    #dst = cv.cornerHarris(gray, blockSize=4, ksize=5, k=0.04)
+    
+    # Result is dilated for marking the corners
+    #dst = cv.dilate(dst, None)
+    
+    # Threshold for an optimal value, it may vary depending on the image
+    #img[dst >  0.01*dst.max()] = [255,255,255]
+    #img[dst <= 0.01*dst.max()] = [0,0,0]
+    #cv.imshow('Harris Corners(only sharp)',img)
+
+    h, w, _ = img.shape
+    output = np.zeros((h,w,1), np.uint8)
+
+    # to detect soft corners
+    dst = cv.cornerHarris(gray, blockSize=4, ksize=5, k=0.04)
+    dst = cv.dilate(dst, None)
+    output[dst > 0.001*dst.max()] = 255
+    output[dst <= 0.001*dst.max()] = 0
+
+    return output
+
+
+def canny(img):
+    edges = cv.Canny(img,30,200)
+    dst = cv.dilate(edges, None)
+    
+    return dst

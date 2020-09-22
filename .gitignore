@@ -8,7 +8,7 @@ src/pipe*.png
 
 # C extensions
 *.so
-
+output
 # Distribution / packaging
 .Python
 build/

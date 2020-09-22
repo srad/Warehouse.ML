@@ -1,6 +1,7 @@
 import sys
 from warehouse import tasks
-
+from warehouse.tex_sampler import mc_sample
+from os import mkdir, path
 
 def info():
     print("Use following parameters:")
@@ -45,5 +46,13 @@ if __name__ == "__main__":
     elif task == "plot" and argc == 2:
         in_dir = args[1]
         tasks.load_plot(in_dir)
+    elif task == "sampletex" and argc == 4:
+        file = args[1] #"C:\\Users\\saman\\src\\Warehouse.ML\\data\\wood\\pine1.jpg"
+        w = args[2]
+        h = args[3]
+        p = "output"
+        if not path.exists(p):
+            mkdir(p)
+        mc_sample(file, p, int(w), int(h))
     else:
         info()
