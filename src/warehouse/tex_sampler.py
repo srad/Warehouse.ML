@@ -4,12 +4,17 @@ import numpy as np
 from random import choices
 import uuid
 from os import path, mkdir
+import json, codecs
 
 def draw_hist(hists):
     plt.clf()
     color = ('b','g','r')
     for channel, col in enumerate(color):
         plt.plot(hists[channel], color = col)
+
+
+def json_write(file_path, hist):
+    json.dump(hist, codecs.open(file_path, 'w', encoding='utf-8'), separators=(',', ':')) ### this saves the array in .json format
 
 
 def hist(img):
@@ -20,6 +25,11 @@ def hist(img):
         hists.append(h)
     
     return hists
+
+
+def flatten_hist(h):
+    return np.array(list(map(lambda x: x[0], h))).tolist()
+
 
 def mc_sample(file, out_dir, w, h, count=1):
     if not path.exists(file):
@@ -33,6 +43,7 @@ def mc_sample(file, out_dir, w, h, count=1):
     filename = path.splitext(path.basename(file))[0]
     sample_size = w * h
 
+    # Abosolute frequencies
     hists = hist(im)
 
     # normalize from 0..1
@@ -42,7 +53,9 @@ def mc_sample(file, out_dir, w, h, count=1):
     g = hists[1] / maximum
     r = hists[2] / maximum
 
-    # This is the probablity distribution of the rgb color==index of orray
+    json_write(f'{out_dir}/{filename}_hist.json', {'b': flatten_hist(hists[0]), 'g': flatten_hist(hists[1]), 'r': flatten_hist(hists[2])})
+
+    # This is the common probablity distribution of the rgb color==index of orray
     h_sum = b + g + r
 
     plt.xlim([0,256])

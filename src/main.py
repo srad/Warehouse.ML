@@ -13,6 +13,7 @@ def info():
     print("         template:   Compute P_xy feature template and write")
     print("         estimate:   First parameter pxy numpy stored matrix, second the input feature image to compute the estimation")
     print("         plot:       Draws histograms of <template> computed data (P_xy)")
+    print("         samplemc <input-image> <width> <height>: Generates a histogram and a sample texture via monte carlo sampling of the histogram")
     exit(0)
 
 
@@ -20,7 +21,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     argc = len(args)
 
-    if args == 0:
+    if argc <= 1:
         info()
 
     task = args[0]
@@ -56,8 +57,8 @@ if __name__ == "__main__":
         tasks.find_shadows_load(args[1])
     elif task == "testextract" and argc == 3:
         tasks.extract_feature_load(args[1], args[2])
-    elif task == "sampletex" and argc == 4:
-        file = args[1] #"C:\\Users\\saman\\src\\Warehouse.ML\\data\\wood\\pine1.jpg"
+    elif task == "samplemc" and argc == 4:
+        file = args[1]
         w = args[2]
         h = args[3]
         p = "output"

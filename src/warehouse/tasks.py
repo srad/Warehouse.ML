@@ -149,6 +149,7 @@ def box(in_dir, data, capture_cam):
         cams = list(data[uuid]['cams'].keys()) if capture_cam is None else [capture_cam]
 
         for cam in cams:
+            print(uuid, cam, capture_cam, cams)
             original = path.join(in_dir, data[uuid]['cams'][cam]['original'])
             annotation = path.join(in_dir, data[uuid]['cams'][cam]['mask'])
 
