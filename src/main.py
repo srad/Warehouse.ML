@@ -18,13 +18,13 @@ def info():
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:]
-    argc = len(args)
-
-    if argc <= 1:
+    if len(sys.argv[1:]) <= 1:
         info()
-
+    
+    args = sys.argv[1:]
     task = args[0]
+    args = args[1:]
+    argc = len(args)
 
     if task == "index" and argc == 2:
         in_dir = args[1]
@@ -39,28 +39,41 @@ if __name__ == "__main__":
         in_dir = args[1]
         template_path = args[2]
         tasks.extract_features(in_dir, template_path)
+    elif task == "diff" and argc == 3:
+        p = "output"
+        if not path.exists(p):
+            mkdir(p)
+        tasks.diff(args[0], args[1], args[2])
     elif task == "template" and argc == 2:
         in_dir = args[1]
         tasks.feature_template(in_dir, "edge_")
         tasks.feature_template(in_dir, "corner_")
     elif task == "pipeline" and argc >= 3:
-        in_dir = args[1]
-        template_path = args[2]
-        cam = args[3] if argc == 4 else None
-        tasks.pipeline(**dict({'in_dir': in_dir, 'cam': cam, 'template_path': template_path}))
+        in_dir = args[0]
+        template_path = args[1]
+        cam = args[2] if argc == 3 else None
+        tasks.pipeline(in_dir, template_path, cam)
     elif task == "plot" and argc == 2:
-        in_dir = args[1]
-        tasks.load_plot(in_dir)
+        in_dir = args[0]
+        name = args[1]
+        tasks.load_plot(in_dir, name)
+    elif task == "diffnoise":
+        p = "output"
+        if not path.exists(p):
+            mkdir(p)
+        tasks.diff_noise(args[0], args[1], p)
+    elif task == "addnoise":
+        tasks.add_noise(args[0], float(args[1]))
     elif task == "match" and argc == 3:
         tasks.match_templates_load(args[1], 0.9, args[2])
     elif task == "shadow" and argc == 2:
         tasks.find_shadows_load(args[1])
     elif task == "testextract" and argc == 3:
         tasks.extract_feature_load(args[1], args[2])
-    elif task == "samplemc" and argc == 4:
-        file = args[1]
-        w = args[2]
-        h = args[3]
+    elif task == "samplemc" and argc == 3:
+        file = args[0]
+        w = args[1]
+        h = args[2]
         p = "output"
         if not path.exists(p):
             mkdir(p)

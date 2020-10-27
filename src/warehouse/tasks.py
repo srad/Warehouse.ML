@@ -10,13 +10,12 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import axes3d
 from datetime import datetime
-
+import time
 
 intermediate_steps = True
 
-TEMPLATE_WITH = 642
-TEMPLATE_HEIGHT = 111
-
+-TEMPLATE_WITH = 642
+-TEMPLATE_HEIGHT = 111
 
 def read_json(file):
     with open(file) as json_file:
@@ -29,8 +28,8 @@ def index(in_dir, outfile="data.json"):
     print(f'Reading: {in_dir}')
 
     for name in get_files(in_dir):
-        parts = name.split(".jpg")[0].split("_")
-
+        parts = name.split(".png")[0].split(".jpg")[0].split("_")
+        
         if not parts[0] in data:
             data[parts[0]] = {
                 'cams': {},
@@ -150,6 +149,8 @@ def box(in_dir, data, capture_cam):
 
         for cam in cams:
             print(uuid, cam, capture_cam, cams)
+            if not cam in data[uuid]['cams']:
+                continue
             original = path.join(in_dir, data[uuid]['cams'][cam]['original'])
             annotation = path.join(in_dir, data[uuid]['cams'][cam]['mask'])
 
@@ -267,14 +268,14 @@ def get_files(dir):
     return [f for f in listdir(dir) if isfile(join(dir, f)) and (f.endswith(".jpg") or f.endswith(".png"))]
 
 
-def plot(p, save_path=None):
-    sns.set_theme()
+def plot(p, filename, save_path=None):
+    #sns.set_theme()
     fig, ax = plt.subplots(1, 1, figsize=(15, 3), dpi=96)
     sns.heatmap(p, vmin=0, vmax=1)
     ax.set(xticklabels=[], yticklabels=[])
     if save_path is not None:
-        plt.savefig(path.join(save_path, f'p_xy_{stamp()}.png'))
-    plt.show()
+        plt.savefig(path.join(save_path, f'{filename}.png'))
+    #plt.show()
 
 
 def feature_template(in_dir, prefix):
@@ -302,13 +303,14 @@ def feature_template(in_dir, prefix):
 
     # Convert back to grayscale: [0..1] => [0..255]
     p = p / l
-    print("Max: ", np.max(p))
-    np.save(path.join(path_results, f'p_xy_{prefix}_{stamp()}.npy'), p)
-    plot(p, path_results)
+    filename = f'p_xy_{prefix}_{stamp()}'
+    np.save(path.join(path_results, f'{filename}.npy'), p)
+    plot(p, filename, path_results)
 
     # To image
     p = p * 255.0
     cv.imwrite(path.join(path_results, f'feature_p_xy_{prefix}_{stamp()}.png'), np.array(p, dtype="uint8"))
+    return filename
 
 
 def load_plot(in_dir, name):
@@ -351,14 +353,14 @@ def features(im, edge=True, corner=True):
     i_corner = None
     i_edge = None
 
-    kernel = np.ones((5, 5), np.uint8)
+    kernel = np.ones((3, 3), np.uint8)
 
     if edge:
-        edge = canny(im)
+        edge = canny(np.copy(im))
         i_edge = cv.dilate(edge, kernel, iterations=1)
 
     if corner:
-        corner = harris(im)
+        corner = harris(np.copy(im))
         i_corner = cv.dilate(corner, kernel, iterations=1)
 
     return i_edge, i_corner
@@ -379,26 +381,75 @@ def extract_features(in_dir, template_path):
 
     size = len(files)
 
+    files_resized = []
+    files_edges = []
+    files_corners = []
+    files_matches = []
+    files_shadows = []
+
     for index, f in enumerate(files):
         file = path.join(path_segments, f)
         image = cv.imread(file)
         w, h = TEMPLATE_WITH, TEMPLATE_HEIGHT
         i = cv.resize(image, (w, h))
-        i_copy = np.copy(i)
-        i_edge, i_corner = features(i)
+        i_edge, i_corner = features(np.copy(i))
         i_match = match_templates(i_edge, 0.9, templates)
-        i_shadow = find_shadows(i_copy)
+        i_shadow = find_shadows(np.copy(i))
 
-        cv.imwrite(path.join(path_features, f'edge_{index}.png'), i_edge)
-        cv.imwrite(path.join(path_features, f'corner_{index}.png'), i_corner)
-        cv.imwrite(path.join(path_features, f'match_{index}.png'), i_match)
-        cv.imwrite(path.join(path_features, f'shadow_{index}.png'), i_shadow)
+        file_resized = path.join(path_features, f'resized_{index}.png')
+        file_edge = path.join(path_features, f'edge_{index}.png')
+        file_corner = path.join(path_features, f'corner_{index}.png')
+        file_match = path.join(path_features, f'match_{index}.png')
+        file_shadow = path.join(path_features, f'shadow_{index}.png')
+
+        cv.imwrite(file_resized, i)
+        cv.imwrite(file_edge, i_edge)
+        cv.imwrite(file_corner, i_corner)
+        cv.imwrite(file_match, i_match)
+        cv.imwrite(file_shadow, i_shadow)
+        
+        files_resized.append(file_resized)
+        files_edges.append(file_edge)
+        files_corners.append(file_corner)
+        files_matches.append(file_match)
+        files_shadows.append(file_shadow)
         
         # i = cv.GaussianBlur(i, (5, 5), 0)
         #cv.imwrite(path.join(path_activated, f'edge_{index}.png'), i_edge)  # activate(i))
         #cv.imwrite(path.join(path_activated, f'corner_{index}.png'), i_corner)
 
-        print(f'Feature extraction: {index}/{size}', end='\r')
+    #    print(f'Feature extraction: {index}/{size}', end='\r')
+
+    results = [files_resized, files_edges, files_corners, files_matches, files_shadows]
+    #write_collage(in_dir, results)
+    overview = np.zeros((TEMPLATE_HEIGHT * len(results[0]), TEMPLATE_WITH * len(results), 3), dtype=np.uint8)
+    cols = range(len(results))
+
+    for row in range(len(results[0])):
+        for col in cols:
+            y = row * TEMPLATE_HEIGHT
+            x = col * TEMPLATE_WITH
+            im = cv.imread(results[col][row])
+            cv.rectangle(im, (0, 0), (TEMPLATE_WITH-2, TEMPLATE_HEIGHT-2), (0,255,0), 2)
+            overview[y:y+TEMPLATE_HEIGHT, x:x+TEMPLATE_WITH] = im
+    cv.imwrite(path.join(path_features, f'collage.jpg'), overview)
+
+    return results
+
+
+def write_collage(in_dir, results):
+    path_features, _ = folders_template(in_dir)
+    overview = np.zeros((TEMPLATE_HEIGHT * len(results[0]), TEMPLATE_WITH * len(results), 3), dtype=np.uint8)
+    cols = range(len(results))
+
+    for row in range(len(results[0])):
+        for col in cols:
+            y = row * TEMPLATE_HEIGHT
+            x = col * TEMPLATE_WITH
+            im = cv.imread(results[col][row])
+            cv.rectangle(im, (0, 0), (TEMPLATE_WITH, TEMPLATE_HEIGHT), (0,255,0), 2)
+            overview[y:y+TEMPLATE_HEIGHT, x:x+TEMPLATE_WITH] = im
+    cv.imwrite(path.join(path_features, f'collage.png'), overview)
 
 
 def likelihood(p_xy, a_xy):
@@ -466,3 +517,72 @@ def pipeline(in_dir, template_path, cam=None):
     feature_template(in_dir, "corner_")
     feature_template(in_dir, "match_")
     feature_template(in_dir, "shadow_")
+
+def diff(file0, file1, out_dir):
+    i0 = cv.imread(file0, cv.IMREAD_GRAYSCALE)
+    i1 = cv.imread(file1, cv.IMREAD_GRAYSCALE)
+
+    h, w = i0.shape
+    out_im = np.zeros((h, w, 1), dtype="uint8")
+    out_im[i0!=i1] = 255
+
+    if i0 is None or i1 is None:
+        print("One of the images could not be read")
+    
+    filename0 = path.splitext(path.basename(file0))[0]
+    filename1 = path.splitext(path.basename(file1))[0]
+
+    cv.imwrite(f'{out_dir}/diff_{filename0}_{filename1}.png', out_im)
+
+
+def diff_noise(file0, file1, out_dir):
+    fd0 = open(file0, 'rb')
+    fd1 = open(file1, 'rb')
+
+    if fd0 is None or fd1 is None:
+        print("File could not be read")
+        exit(0)
+
+    h = 4016
+    w = 2252
+
+    out_im = np.zeros((h, w, 1), dtype="uint8")
+    f0 = np.fromfile(fd0, dtype=np.uint8,count=h*w)
+    f1 = np.fromfile(fd1, dtype=np.uint8,count=h*w)
+    
+    im0 = f0.reshape((h, w))
+    im1 = f1.reshape((h, w))
+    out_im[im0!=im1] = 255
+    
+    fd0.close()
+    fd1.close()
+
+    filename0 = path.splitext(path.basename(file0))[0]
+    filename1 = path.splitext(path.basename(file1))[0]
+
+    out_file = f'{out_dir}/diff_{filename0}_{filename1}.png'
+    cv.imwrite(out_file, out_im)
+    print(f'File written {out_file}')
+
+
+def noise_poisson(image, peak=1.0):
+    """
+    peak close to 1.0 will be really noisy.
+    see https://github.com/scikit-image/scikit-image/blob/master/skimage/util/noise.py
+    and
+    https://github.com/yu4u/noise2noise/issues/14
+    """
+    return (np.random.poisson(image / 255.0 * peak) / peak * 255) - image
+
+
+def noise_gaussian(image, mean = 0, var=0.1):
+    """
+    see https://stackoverflow.com/questions/19289470/adding-poisson-noise-to-an-image
+    """
+    return np.random.normal(mean, var ** 0.5, image.shape)
+
+
+def add_noise(file, out_dir, PEAK=1.0):
+    image = cv.imread(file)
+    noisy = image + noise_poisson(image, 250) + noise_gaussian(image, 1, 100.0)
+    cv.imwrite(f'{file}_noise.png', noisy)

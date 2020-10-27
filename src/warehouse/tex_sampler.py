@@ -79,7 +79,9 @@ def mc_sample(file, out_dir, w, h, count=1):
                 col_r = choices(population=rgb, weights=r)
                 tex[y, x] = [col_b[0], col_g[0], col_r[0]]
 
-        cv.imwrite(f'{out_dir}/{filename}_tex_{i}_{sample_size}.png', tex)
+        file = f'{out_dir}/{filename}_tex_{i}_{sample_size}.png'
+        print("Writing", file)
+        cv.imwrite(file, tex)
         cv.waitKey()
 
         hs = hist(tex)

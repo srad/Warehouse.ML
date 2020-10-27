@@ -233,7 +233,7 @@ def harris(img):
     output = np.zeros((h,w,1), np.uint8)
 
     # to detect soft corners
-    dst = cv.cornerHarris(gray, blockSize=4, ksize=5, k=0.04)
+    dst = cv.cornerHarris(gray, blockSize=2, ksize=5, k=0.1)
     dst = cv.dilate(dst, None)
     output[dst > 0.001*dst.max()] = 255
     output[dst <= 0.001*dst.max()] = 0
@@ -242,7 +242,7 @@ def harris(img):
 
 
 def canny(img):
-    edges = cv.Canny(img,30,200)
+    edges = cv.Canny(img,400,500)
     dst = cv.dilate(edges, None)
     
     return dst
